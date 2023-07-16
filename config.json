@@ -1,5 +1,7 @@
 {
   "token": "token",
-  "website": "https://www.api.rugbug.net/public/api/all-active-punishments",
-  "channelid": "1005801374644178947"
+  "website": "https://testing.matiasisgood.repl.co",
+  "banfeed": "1130125519178964992",
+  "status": "1130117974611738634",
+  "timeout": 6000
 }
