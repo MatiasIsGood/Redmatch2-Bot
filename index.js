@@ -69,7 +69,7 @@ function sendBanFeed(channel, addedBans) {
   let banFeedMessage = '';
 
   if (addedBans.length > 0) {
-    banFeedMessage += `Added bans:\n${addedBans.join('\n')}\n\n`;
+    banFeedMessage += `Added bans:\nhttp://steamcommunity.com/profiles/${addedBans.join('\n')}\n\n`;
   }
 
   if (banFeedMessage !== '') {
