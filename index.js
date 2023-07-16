@@ -1,11 +1,12 @@
-const { Client, Events, GatewayIntentBits } = require('discord.js');
-//const { token, website, channelid } = require('./config.json');
+const { Client, Events, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { token, website, banfeed, status, timeout } = require('./config.json');
 const axios = require('axios');
-token = process.env.token
-website = process.env.website
-channelid = process.env.channelid
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+
+let banStatusMessage = null;
+let currentBanCount = 0;
+let isFirstTime = true;
 
 client.once(Events.ClientReady, () => {
   console.log(`Ready! Logged in as ${client.user.tag}`);
@@ -16,56 +17,38 @@ client.once(Events.ClientReady, () => {
 
 client.login(token);
 
-let previousStrings = null;
-let firstRun = true;
-
 async function monitorWebsite() {
-  while (true) {
-    try {
-      console.log('Checking website...', website);
+  try {
+    console.log('Checking website...', website);
 
-      // Send a GET request to the website to retrieve the data
-      const response = await axios.get(website);
-      const websiteData = response.data;
+    // Send a GET request to the website to retrieve the data
+    const response = await axios.get(website);
+    const websiteData = response.data;
 
-      // Extract the list of strings from the website data
-      const currentStrings = extractStrings(websiteData);
+    // Extract the list of strings from the website data
+    const currentStrings = extractStrings(websiteData);
 
-      if (previousStrings === null) {
-        // First run, save the current strings
-        previousStrings = currentStrings;
-      } else {
-        // Compare the current strings with the previous strings
-        const addedStrings = currentStrings.filter(str => !previousStrings.includes(str));
-        const removedStrings = previousStrings.filter(str => !currentStrings.includes(str));
+    const addedCount = isFirstTime ? 0 : currentStrings.length - currentBanCount;
+    currentBanCount = currentStrings.length;
 
-        if (addedStrings.length > 0 || removedStrings.length > 0) {
-          console.log('Changes detected! Sending message to Discord channel...');
+    const statusChannel = client.channels.cache.get(status);
 
-          const channel = client.channels.cache.get(channelid);
-          const message = generateMessage(addedStrings, removedStrings);
+    // Update the ban status embed every timeout
+    updateBanStatus(statusChannel, currentBanCount);
 
-          channel.send(message);
-
-          // Update the previous strings with the current strings
-          previousStrings = currentStrings;
-        } else {
-          console.log('No changes detected.');
-        }
-      }
-
-      if (firstRun) {
-        // Save the initial strings
-        previousStrings = currentStrings;
-        firstRun = false;
-      }
-    } catch (error) {
-      console.error('Error checking website:', error.message);
+    // Send the differences in the ban feed to the banfeed channel when they change
+    if (!isFirstTime && addedCount > 0) {
+      const banFeedChannel = client.channels.cache.get(banfeed);
+      sendBanFeed(banFeedChannel, currentStrings.slice(-addedCount));
     }
 
-    // Adjust the interval as needed (e.g., check every minute)
-    await delay(60000);
+    isFirstTime = false;
+  } catch (error) {
+    console.error('Error checking website:', error.message);
   }
+
+  // Adjust the interval as needed (e.g., check every minute)
+  setTimeout(monitorWebsite, timeout);
 }
 
 function extractStrings(websiteData) {
@@ -82,20 +65,63 @@ function extractStrings(websiteData) {
   }
 }
 
-function generateMessage(addedStrings, removedStrings) {
-  let message = 'Added / removed ban in Redmatch 2:\n\n';
+function sendBanFeed(channel, addedBans) {
+  let banFeedMessage = '';
 
-  if (addedStrings.length > 0) {
-    message += `Added bans:\n${addedStrings.join('\n')}\n\n`;
+  if (addedBans.length > 0) {
+    banFeedMessage += `Added bans:\n${addedBans.join('\n')}\n\n`;
   }
 
-  if (removedStrings.length > 0) {
-    message += `Removed bans:\n${removedStrings.join('\n')}\n\n`;
+  if (banFeedMessage !== '') {
+    channel.send(banFeedMessage.trim());
   }
-
-  return message;
 }
 
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+function updateBanStatus(channel, banCount) {
+  // Check if banStatusMessage already exists
+  if (banStatusMessage) {
+    // Edit the existing banStatusMessage with the updated ban count
+    const embed = generateEmbed(banCount);
+    banStatusMessage.edit({ embeds: [embed] })
+      .catch((error) => {
+        console.error('Error editing ban status message:', error.message);
+      });
+  } else {
+    // Delete all existing messages in the channel
+    channel.messages.fetch()
+      .then((messages) => {
+        // Delete all existing messages in the channel
+        const promises = messages.map((message) => message.delete());
+        return Promise.all(promises);
+      })
+      .then(() => {
+        // Send the ban status embed
+        const embed = generateEmbed(banCount);
+        return channel.send({ embeds: [embed] });
+      })
+      .then((message) => {
+        banStatusMessage = message;
+      })
+      .catch((error) => {
+        console.error('Error updating ban status:', error.message);
+      });
+  }
+}
+
+
+function generateEmbed(banCount) {
+  const embed = new EmbedBuilder()
+    .setColor(0x0099FF)
+    .setTitle('Ban Status')
+    .setDescription('The current status of bans in Redmatch 2')
+    .setURL('https://github.com/MatiasIsGood')
+    .setAuthor({ name: 'Matias', iconURL: 'https://i.imgur.com/AfFp7pu.png', url: 'https://github.com/MatiasIsGood' })
+    .setThumbnail('https://i.imgur.com/AfFp7pu.png')
+    .addFields(
+      { name : 'Total Bans', value: banCount.toString()},
+    )
+    .setTimestamp()
+    .setFooter({ text: 'Made by Matias', iconURL: 'https://i.imgur.com/AfFp7pu.png' });
+
+  return embed;
 }
